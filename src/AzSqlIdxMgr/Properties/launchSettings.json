@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "AzSqlIdxMgr": {
+      "commandName": "Project",
+      // "commandLineArgs": "azsqlidxmgr --subscription MAXWELLWERU --server-name maxprod --database-name prod-eu --dry-run",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/AzSqlIdxMgr/AzSqlIdxMgr.csproj" />
+  <Project Path="tests/AzSqlIdxMgr.Tests/AzSqlIdxMgr.Tests.csproj" />
+</Solution>

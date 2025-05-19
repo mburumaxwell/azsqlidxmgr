@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Deterministic>true</Deterministic>
+    <Description>Azure SQL Index Manager</Description>
+    <Product>Azure SQL Index Manager</Product>
+    <IsPackable>true</IsPackable> <!-- Required when using Microsoft.NET.Sdk.Worker -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>azsqlidxmgr</ToolCommandName>
+    <PackageId>azsqlidxmgr</PackageId>
+    <AssemblyName>azsqlidxmgr</AssemblyName>
+    <!-- PublishAot cannot work when dotnet pack is called. Only set it in the workflow. Use IsAotCompatible for dev -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- <PublishAot>true</PublishAot> -->
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <EventSourceSupport>false</EventSourceSupport>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- TODO: remove this once the Azure SDK is fixed -->
+    <!-- https://github.com/Azure/azure-sdk-for-net/issues/49498 -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--  Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+    <!-- Embed source files that are not tracked by the source control manager in the PDB -->
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <!-- Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PackageIcon>logo.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>$(PackageTags);azure;sql;index</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\azure-sql-scripts\AzureSQLMaintenance.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.CommandLine" />
+    <Using Include="System.CommandLine.Invocation" />
+    <Using Include="System.CommandLine.Parsing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AzSqlIdxMgr.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.13.2" />
+    <PackageReference Include="Azure.ResourceManager.Sql" Version="1.2.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.5" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25260.104" />
+    <PackageReference Include="Tingle.Extensions.Logging" Version="5.2.0" />
+    <PackageReference Include="Tingle.Extensions.Primitives" Version="5.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\logo.png" Pack="True" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

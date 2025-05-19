@@ -1,0 +1,530 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+    paths-ignore:
+      - .devcontainer/**
+      - .vscode/**
+      - docs/**
+      - README.md
+      - LICENSE
+      - '**/README.md'
+      - .github/**
+      - '!.github/workflows/build.yml'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - .devcontainer/**
+      - .vscode/**
+      - docs/**
+      - README.md
+      - LICENSE
+      - '**/README.md'
+      - .github/**
+      - '!.github/workflows/build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # write required for ncipollo/release-action to create a release
+  packages: write
+  attestations: write # required for actions/attest-build-provenance
+  id-token: write # required for actions/attest-build-provenance
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  COMMITTER_USERNAME: ${{ github.repository_owner }}
+  COMMITTER_EMAIL: '1645026+mburumaxwell@users.noreply.github.com'
+  PKG_MAINTAINER: '${{ github.repository_owner }} <1645026+mburumaxwell@users.noreply.github.com>'
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    outputs:
+      shortSha: ${{ steps.gitversion.outputs.shortSha }}
+      fullSemVer: ${{ steps.gitversion.outputs.fullSemVer }}
+      major: ${{ steps.gitversion.outputs.major }}
+      minor: ${{ steps.gitversion.outputs.minor }}
+      majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for GitVersion
+          submodules: true
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.0.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v3
+        with:
+          useConfigFile: true
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: >
+          dotnet build
+          --configuration Release
+          --no-restore
+          -p:VersionPrefix=${{ steps.gitversion.outputs.fullSemVer }}
+
+      - name: Test
+        run: >
+          dotnet test
+          --configuration Release
+          --no-build
+          --collect "Code coverage"
+
+      - name: Pack
+        run: >
+          dotnet pack
+          --no-build
+          --configuration Release
+          --output ${{ github.workspace }}/tool
+          -p:PackageVersion=${{ steps.gitversion.outputs.fullSemVer }}
+
+      - name: Upload Artifact (tool)
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ github.workspace }}/tool/*
+          name: tool
+          retention-days: 1
+
+      - name: Publish to GitHub Packages
+        if: ${{ github.actor != 'dependabot[bot]' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags')) }}
+        run: >
+          dotnet nuget push "${{ github.workspace }}/tool/*"
+          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate
+
+      - name: Publish to NuGet.org
+        if: ${{ github.actor != 'dependabot[bot]' && startsWith(github.ref, 'refs/tags') }}
+        run: >
+          dotnet nuget push "${{ github.workspace }}/tool/*"
+          --source "https://api.nuget.org/v3/index.json"
+          --api-key ${{ secrets.NUGET_API_KEY }}
+          --skip-duplicate
+
+  Binaries:
+    strategy:
+      fail-fast: true
+      matrix:
+        # linux-arm (ArmV7) is not ready for AoT yet (https://github.com/mburumaxwell/azsqlidxmgr/pull/8)
+        os: ['macos', 'ubuntu', 'windows']
+        arch: ['arm64', 'x86', 'x64']
+        include:
+          # list of RIDs (Runtime Identifiers) can be found at:
+          # https://github.com/dotnet/runtime/blob/main/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json
+          - { os: ubuntu, rid-prefix: 'linux' }
+          - { os: windows, rid-prefix: 'win' }
+          - { os: macos, rid-prefix: 'osx' }
+          - { os: windows, archive-type: 'zip' } # windows creates zip files, others default to 'tar'
+          # https://github.blog/changelog/2025-01-16-linux-arm64-hosted-runners-now-available-for-free-in-public-repositories-public-preview/
+          # https://github.blog/changelog/2025-04-14-windows-arm64-hosted-runners-now-available-in-public-preview
+          # macos-latest and macos-14 onwards are arm64 by default
+          - { os: ubuntu, arch: 'arm64', runs-on: ubuntu-24.04-arm }
+          - { os: windows, arch: 'arm64', runs-on: 'windows-11-arm' }
+        exclude:
+          # only windows supports x86 for PublishAot
+          - { os: macos, arch: 'x86' }
+          - { os: ubuntu, arch: 'x86' }
+
+    runs-on: ${{ matrix.runs-on || format('{0}-{1}', matrix.os, 'latest') }}
+    needs: Build
+
+    env:
+      FULL_SEM_VER: ${{ needs.Build.outputs.fullSemVer }}
+      MAJOR_MINOR_PATCH: ${{ needs.Build.outputs.majorMinorPatch }}
+      DOTNET_RID: ${{ format('{0}-{1}', matrix.rid-prefix, matrix.arch) }}
+      ARCHIVE_EXT: ${{ matrix.archive-type || 'tar.gz' }}
+      PKG_NAME: 'azsqlidxmgr'
+      PKG_DESCRIPTION: 'Azure SQL Index Manager'
+      PKG_HOMEPAGE: 'https://github.com/mburumaxwell/azsqlidxmgr'
+      LINUX_ARCH: ${{ (matrix.arch == 'x64' && 'amd64') || matrix.arch }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Build & Publish
+        run: >
+          dotnet publish
+          --runtime ${{ env.DOTNET_RID }}
+          --configuration Release
+          -p:PackageVersion=${{ env.FULL_SEM_VER }}
+          -p:VersionPrefix=${{ env.FULL_SEM_VER }}
+          -p:PublishAot=true
+          --output ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}
+          src/AzSqlIdxMgr/AzSqlIdxMgr.csproj
+
+      - name: Remove Debug Symbols
+        shell: bash
+        run: rm -rf *.pdb *.dbg *.dSYM
+        working-directory: ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}
+
+      - name: Test (Binary)
+        run: ./azsqlidxmgr --version
+        working-directory: ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}
+
+      - name: Upload Artifact (binaries)
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ github.workspace }}/binaries/**
+          name: binaries-${{ env.DOTNET_RID }}
+          retention-days: 1
+
+      - name: Create Archive Folder
+        run: mkdir ${{ github.workspace }}/releases
+
+      - name: Create Archive (${{ env.ARCHIVE_EXT }})
+        uses: thedoctor0/zip-release@main
+        with:
+          type: ${{ matrix.archive-type || 'tar' }}
+          filename: ${{ github.workspace }}/releases/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.${{ env.ARCHIVE_EXT }}
+          directory: ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}
+
+      # using fpm because it is simple and flexible https://fpm.readthedocs.io/en/latest
+      - name: Build Linux packages
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          echo "Preparing .pkgroot ..." && \
+          mkdir -p .pkgroot/usr/bin && \
+          cp -p ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}/* .pkgroot/usr/bin/ && \
+          echo "Prepared .pkgroot" && \
+
+          echo "Installing fpm ..." && \
+          sudo gem install --no-document fpm
+          echo "Installed fpm" && \
+
+          set -e
+          COMMON_ARGS=(
+            --chdir .pkgroot
+            --input-type dir
+            --name ${{ env.PKG_NAME }}
+            --version ${{ env.FULL_SEM_VER }}
+            --architecture ${{ env.LINUX_ARCH }}
+            --description "${{ env.PKG_DESCRIPTION }}"
+            --license MIT
+            --maintainer "${{ env.PKG_MAINTAINER }}"
+            --url "${{ env.PKG_HOMEPAGE }}"
+            --vendor "${{ github.repository_owner }}"
+            --category "utils"
+            .
+          )
+
+          echo "Building DEB package ..." && \
+          fpm --output-type deb \
+              --package ${{ github.workspace }}/releases/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.deb \
+              "${COMMON_ARGS[@]}" && \
+          echo "Built DEB package" && \
+
+          echo "Building RPM package ..." && \
+          fpm --output-type rpm \
+              --package ${{ github.workspace }}/releases/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.rpm \
+              "${COMMON_ARGS[@]}" && \
+          echo "Built RPM package" && \
+
+          echo "Building APK package ..." && \
+          fpm --output-type apk \
+              --package ${{ github.workspace }}/releases/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.apk \
+              --depends gcompat \
+              "${COMMON_ARGS[@]}" && \
+          echo "Built APK package" && \
+
+          echo "Done"
+
+      - name: Upload Artifact (releases)
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ github.workspace }}/releases/**
+          name: releases-${{ env.DOTNET_RID }}
+          retention-days: 1
+
+      - name: Test Linux packages
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          echo "Testing DEB package ..." && \
+          docker run --rm -v "${{ github.workspace }}/releases:/mnt" ubuntu:24.04 /bin/bash -c "
+            apt-get install -y ./mnt/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.deb && \
+            azsqlidxmgr --version
+          " && \
+          echo "DEB package works" && \
+
+          echo "Testing RPM package ..." && \
+          docker run --rm -v "${{ github.workspace }}/releases:/mnt" almalinux:9 /bin/bash -c "
+            dnf install -y /mnt/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.rpm && \
+            azsqlidxmgr --version
+          " && \
+          echo "RPM package works" && \
+
+          echo "Testing APK package ..." && \
+          docker run --rm -v "${{ github.workspace }}/releases:/mnt" alpine:latest /bin/sh -c "
+            apk add --no-cache --allow-untrusted /mnt/azsqlidxmgr-${{ env.FULL_SEM_VER }}-${{ env.DOTNET_RID }}.apk && \
+            azsqlidxmgr --version
+          "
+          echo "APK package works" && \
+
+          echo "Done"
+
+  Docker:
+    runs-on: ubuntu-latest
+    needs: [Build, Binaries]
+    env:
+      IMAGE_NAME: 'azsqlidxmgr'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute Docker Tags
+        id: docker_tags
+        uses: mburumaxwell/actions/compute-docker-tags@main
+        with:
+          image: 'ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}'
+          short_sha: ${{ needs.Build.outputs.shortSha }}
+          full_semver: ${{ needs.Build.outputs.fullSemVer }}
+          major: ${{ needs.Build.outputs.major }}
+          minor: ${{ needs.Build.outputs.minor }}
+
+      - name: Download Artifact (binaries)
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry
+        if: ${{ !startsWith(github.ref, 'refs/pull') }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-arch image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ github.workspace }}
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ !startsWith(github.ref, 'refs/pull') }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+          cache-to: type=inline # sets BUILDKIT_INLINE_CACHE=1
+          tags: ${{ steps.docker_tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.description="Azure SQL Index Manager"
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.Build.outputs.fullSemVer }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            com.github.image.run.id=${{ github.run_id }}
+            com.github.image.run.number=${{ github.run_number }}
+            com.github.image.job.id=${{ github.job }}
+            com.github.image.source.sha=${{ github.sha }}
+            com.github.image.source.branch=${{ github.ref }}
+
+      - name: Provenance Attestation
+        uses: actions/attest-build-provenance@v2
+        # Only if we have pushed the image (otherwise the digest is not available)
+        if: ${{ !startsWith(github.ref, 'refs/pull') }}
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Upload Artifact (binaries)
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ github.workspace }}/binaries/**
+          name: binaries
+          retention-days: 1
+
+      - name: Delete Artifacts (binaries-*)
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: binaries-*
+
+  Packaging:
+    runs-on: ubuntu-latest
+    needs: [Build, Binaries]
+    env:
+      FULL_SEM_VER: ${{ needs.Build.outputs.fullSemVer }}
+    outputs:
+      fullSemVer: ${{ needs.Build.outputs.fullSemVer }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Artifact (releases)
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ github.workspace }}/releases
+          pattern: releases-*
+          merge-multiple: true
+
+      - name: Compute binary checksums
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const path = require('path');
+
+            const version = '${{ env.FULL_SEM_VER }}';
+            const dir = '${{ github.workspace }}/releases';
+            const outputFile = '${{ github.workspace }}/releases/checksum.txt';
+
+            const files = {
+              RELEASE_SHA256_MACOS_ARM64:     `azsqlidxmgr-${version}-osx-arm64.tar.gz`,
+              RELEASE_SHA256_MACOS_X64:       `azsqlidxmgr-${version}-osx-x64.tar.gz`,
+
+              RELEASE_SHA256_LINUX_ARM64:     `azsqlidxmgr-${version}-linux-arm64.tar.gz`,
+              RELEASE_SHA256_LINUX_X64:       `azsqlidxmgr-${version}-linux-x64.tar.gz`,
+
+              RELEASE_SHA256_LINUX_ARM64_DEB: `azsqlidxmgr-${version}-linux-arm64.deb`,
+              RELEASE_SHA256_LINUX_X64_DEB:   `azsqlidxmgr-${version}-linux-x64.deb`,
+              RELEASE_SHA256_LINUX_ARM64_RPM: `azsqlidxmgr-${version}-linux-arm64.rpm`,
+              RELEASE_SHA256_LINUX_X64_RPM:   `azsqlidxmgr-${version}-linux-x64.rpm`,
+              RELEASE_SHA256_LINUX_ARM64_APK: `azsqlidxmgr-${version}-linux-arm64.apk`,
+              RELEASE_SHA256_LINUX_X64_APK:   `azsqlidxmgr-${version}-linux-x64.apk`,
+
+              RELEASE_SHA256_WINDOWS_ARM64:   `azsqlidxmgr-${version}-win-arm64.zip`,
+              RELEASE_SHA256_WINDOWS_X86:     `azsqlidxmgr-${version}-win-x86.zip`,
+              RELEASE_SHA256_WINDOWS_X64:     `azsqlidxmgr-${version}-win-x64.zip`,
+            };
+
+            const lines = [];
+
+            for (const [envKey, fileName] of Object.entries(files)) {
+              const filePath = path.join(dir, fileName);
+              if (!fs.existsSync(filePath)) {
+                core.warning(`Missing expected file: ${filePath}`);
+                continue;
+              }
+
+              const buffer = fs.readFileSync(filePath);
+              const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+              core.exportVariable(envKey, hash);
+              core.info(`${envKey}: ${hash}`);
+
+              lines.push(`${hash}  ${fileName}`);
+            }
+            fs.writeFileSync(outputFile, lines.join('\n') + '\n');
+            core.info(`Checksums written to checksum.txt:\n${lines.join('\n')}`);
+
+      - name: Copy packaging
+        run: |
+          mkdir -p ${{ github.workspace }}/releases/homebrew/ && \
+          mv packaging/formula.rb ${{ github.workspace }}/releases/homebrew/azsqlidxmgr.rb && \
+          mkdir -p ${{ github.workspace }}/releases/scoop/ && \
+          mv packaging/scoop.json ${{ github.workspace }}/releases/scoop/azsqlidxmgr.json
+
+      - name: Replace tokens
+        uses: qetza/replacetokens-action@v1
+        with:
+          root: ${{ github.workspace }}/releases
+          sources: |
+            **/*.rb
+            **/*.json
+            **/*.jsonc
+          variables: '[${{ toJSON(env) }}]' # use env
+          log-level: 'debug'
+          if-no-files-found: 'error'
+          missing-var-log: 'error'
+        env:
+          VERSION: ${{ env.FULL_SEM_VER }}
+
+      - name: Upload Artifact (releases)
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ github.workspace }}/releases/**
+          name: releases
+          retention-days: 1
+
+      - name: Delete Artifacts (releases-*)
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: releases-*
+
+  Release:
+    runs-on: ubuntu-latest
+    needs: [Docker, Packaging]
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    env:
+      FULL_SEM_VER: ${{ needs.Packaging.outputs.fullSemVer }}
+
+    steps:
+      - name: Download Artifact (releases)
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ github.workspace }}/releases
+          name: releases
+
+      - name: Build Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Provenance Attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: ${{ github.workspace }}/releases/checksum.txt
+
+      - name: Upload Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ${{ github.workspace }}/releases/*.*
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: ${{ steps.changelog.outputs.changelog }}
+
+      # TODO: Publish .deb packages to an APT repository
+      # TODO: Publish .rpm packages to a YUM/DNF repository
+      # TODO: Publish .apk packages to an Alpine package repository
+
+      - name: Update homebrew tap
+        uses: dmnemec/copy_file_to_another_repo_action@main
+        with:
+          source_file: '${{ github.workspace }}/releases/homebrew/azsqlidxmgr.rb'
+          destination_folder: 'Formula'
+          destination_repo: '${{ github.repository_owner }}/homebrew-tap'
+          user_email: '${{ env.COMMITTER_EMAIL }}'
+          user_name: '${{ env.COMMITTER_USERNAME }}'
+          commit_message: 'Update azsqlidxmgr to ${{ env.FULL_SEM_VER }}'
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.RELEASING_GITHUB_TOKEN }}
+
+      - name: Update scoop bucket
+        uses: dmnemec/copy_file_to_another_repo_action@main
+        with:
+          source_file: '${{ github.workspace }}/releases/scoop/azsqlidxmgr.json'
+          destination_repo: '${{ github.repository_owner }}/scoop-tools'
+          user_email: '${{ env.COMMITTER_EMAIL }}'
+          user_name: '${{ env.COMMITTER_USERNAME }}'
+          commit_message: 'Update azsqlidxmgr to ${{ env.FULL_SEM_VER }}'
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.RELEASING_GITHUB_TOKEN }}
