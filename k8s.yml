@@ -1,0 +1,42 @@
+# Remember to edit values to match your taste/setup
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azsqlidxmgr-credentials
+type: Opaque
+stringData:
+  # Replace with your actual Service Principal (or managed identity) values
+  AZURE_TENANT_ID: "<your-tenant-id>"
+  AZURE_CLIENT_ID: "<your-client-id>"
+  AZURE_CLIENT_SECRET: "<your-client-secret>"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: azsqlidxmgr-sync
+spec:
+  schedule: "0 23 * * *" # Every days; 11pm when everyone is asleep
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            # You can change the tag to one that matches what version you want
+            - name: azsqlidxmgr
+              image: ghcr.io/mburumaxwell/azsqlidxmgr:latest
+              imagePullPolicy: Always # Only necessary if you are pulling a tag that is not immutable e.g. latest, 1, or 1.2
+              args:
+                - "--subscription"
+                - "prod-sub"
+                - "--server-name"
+                - "prod-sql"
+                - "--database-name"
+                - "ProdDb"
+                - "--dry-run"
+              # Pull in Azure credentials from the Secret
+              envFrom:
+                - secretRef:
+                    name: azsqlidxmgr-credentials

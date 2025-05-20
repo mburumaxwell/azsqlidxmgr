@@ -125,7 +125,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        # linux-arm (ArmV7) is not ready for AoT yet (https://github.com/mburumaxwell/azsqlidxmgr/pull/8)
+        # linux-arm (ArmV7) is not ready for AoT yet (https://github.com/mburumaxwell/azddns/pull/8)
         os: ['macos', 'ubuntu', 'windows']
         arch: ['arm64', 'x86', 'x64']
         include:
