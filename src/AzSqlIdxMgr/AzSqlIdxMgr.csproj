@@ -23,12 +23,6 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- TODO: remove this once the Azure SDK is fixed -->
-    <!-- https://github.com/Azure/azure-sdk-for-net/issues/49498 -->
-    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
-  </PropertyGroup>
-
-  <PropertyGroup>
     <!--  Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
