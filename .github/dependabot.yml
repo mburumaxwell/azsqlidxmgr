@@ -19,6 +19,10 @@ updates:
     groups:
       docker:
         patterns: ['docker/*']
+      github-actions-artifacts:
+        patterns:
+          - 'actions/upload-artifact'
+          - 'actions/download-artifact'
 
   - package-ecosystem: 'dotnet-sdk'
     directory: '/'
@@ -46,6 +50,8 @@ updates:
     groups:
       azure:
         patterns: ['Azure.*']
+      microsoft:
+        patterns: ['Microsoft.*']
       tingle:
         patterns: ['Tingle.*']
       xunit:
