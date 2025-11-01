@@ -66,12 +66,10 @@ root.SetAction((parseResult, cancellationToken) =>
                                 cancellationToken);
 });
 
-var configuration = new CommandLineConfiguration(root);
-
 // execute the command
 try
 {
-    return await configuration.InvokeAsync(args);
+    return await root.Parse(args).InvokeAsync();
 }
 finally
 {
