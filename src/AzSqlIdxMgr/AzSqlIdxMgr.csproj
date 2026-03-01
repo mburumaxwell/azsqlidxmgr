@@ -40,7 +40,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\azure-sql-scripts\AzureSQLMaintenance.txt" />
+    <EmbeddedResource Include="..\..\azure-sql-scripts\AzureSQLMaintenance.sql" />
   </ItemGroup>
 
   <ItemGroup>
