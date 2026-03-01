@@ -33,8 +33,8 @@ concurrency:
 permissions:
   contents: write # write required for ncipollo/release-action to create a release
   packages: write
-  attestations: write # required for actions/attest-build-provenance
-  id-token: write # required for actions/attest-build-provenance
+  attestations: write # required for actions/attest
+  id-token: write # required for actions/attest
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
@@ -345,7 +345,7 @@ jobs:
             com.github.image.source.branch=${{ github.ref }}
 
       - name: Provenance Attestation
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest@v4
         # Only if we have pushed the image (otherwise the digest is not available)
         if: ${{ !startsWith(github.ref, 'refs/pull') }}
         with:
@@ -489,7 +489,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Provenance Attestation
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest@v4
         with:
           subject-checksums: ${{ github.workspace }}/releases/checksum.txt
 
