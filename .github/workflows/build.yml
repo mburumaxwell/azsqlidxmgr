@@ -95,7 +95,7 @@ jobs:
           -p:PackageVersion=${{ steps.gitversion.outputs.fullSemVer }}
 
       - name: Upload Artifact (tool)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ github.workspace }}/tool/*
           name: tool
@@ -200,7 +200,7 @@ jobs:
         working-directory: ${{ github.workspace }}/binaries/${{ env.DOTNET_RID }}
 
       - name: Upload Artifact (binaries)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ github.workspace }}/binaries/**
           name: binaries-${{ env.DOTNET_RID }}
@@ -267,7 +267,7 @@ jobs:
           echo "Done"
 
       - name: Upload Artifact (releases)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ github.workspace }}/releases/**
           name: releases-${{ env.DOTNET_RID }}
@@ -320,7 +320,7 @@ jobs:
           minor: ${{ needs.Build.outputs.minor }}
 
       - name: Download Artifact (binaries)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: binaries
           pattern: binaries-*
@@ -370,7 +370,7 @@ jobs:
           push-to-registry: true
 
       - name: Upload Artifact (binaries)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ github.workspace }}/binaries/**
           name: binaries
@@ -394,7 +394,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download Artifact (releases)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: ${{ github.workspace }}/releases
           pattern: releases-*
@@ -473,7 +473,7 @@ jobs:
           VERSION: ${{ env.FULL_SEM_VER }}
 
       - name: Upload Artifact (releases)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ github.workspace }}/releases/**
           name: releases
@@ -493,7 +493,7 @@ jobs:
 
     steps:
       - name: Download Artifact (releases)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: ${{ github.workspace }}/releases
           name: releases
