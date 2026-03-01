@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-alpine AS base
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS base
 
 ARG TARGETPLATFORM
 COPY binaries/ /binaries/
@@ -19,7 +19,7 @@ RUN chmod +x /bin/azsqlidxmgr
 # We use a multi-stage build to avoid including the entire /binaries directory in the final image.
 # If we removed /binaries in the same layer where we copied it, it would still be part of the image history and increase the final size.
 # This second stage ensures only the azsqlidxmgr binary and runtime dependencies are retained.
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS runtime
 
 RUN apk add --no-cache gcompat
 COPY --from=base /bin/azsqlidxmgr /bin/azsqlidxmgr
