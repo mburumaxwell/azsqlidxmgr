@@ -377,7 +377,7 @@ jobs:
           retention-days: 1
 
       - name: Delete Artifacts (binaries-*)
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@v6
         with:
           name: binaries-*
 
@@ -480,7 +480,7 @@ jobs:
           retention-days: 1
 
       - name: Delete Artifacts (releases-*)
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@v6
         with:
           name: releases-*
 
