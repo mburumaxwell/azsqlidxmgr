@@ -458,7 +458,7 @@ jobs:
           mv packaging/scoop.json ${{ github.workspace }}/releases/scoop/azsqlidxmgr.json
 
       - name: Replace tokens
-        uses: qetza/replacetokens-action@v1
+        uses: qetza/replacetokens-action@v2
         with:
           root: ${{ github.workspace }}/releases
           sources: |
