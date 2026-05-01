@@ -401,7 +401,7 @@ jobs:
           merge-multiple: true
 
       - name: Compute binary checksums
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
